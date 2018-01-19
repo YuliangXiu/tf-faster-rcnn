@@ -102,11 +102,23 @@ class SolverWrapper(object):
 
     return last_snapshot_iter
 
-  def get_variables_in_checkpoint_file(self, file_name):
+  def get_variables_in_checkpoint_file(self, file_name, exclusions):
     try:
       reader = pywrap_tensorflow.NewCheckpointReader(file_name)
       var_to_shape_map = reader.get_variable_to_shape_map()
-      return var_to_shape_map 
+      variables_to_restore = {}
+      var_names = sorted(var_to_shape_map.keys())
+      for var in var_names:
+        excluded = False
+        for exclusion in exclusions:
+          if var.startswith(exclusion):
+            excluded = True
+            print(var)
+            print('!!!!!!!!!!!!!!!!!!!the var is excluded!!!!!!!!!!')
+            break
+        if not excluded:
+          variables_to_restore[var] = var_to_shape_map[var]
+      return variables_to_restore 
     except Exception as e:  # pylint: disable=broad-except
       print(str(e))
       if "corrupted compressed block contents" in str(e):
@@ -154,11 +166,17 @@ class SolverWrapper(object):
 
   def find_previous(self):
     sfiles = os.path.join(self.output_dir, cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_*.ckpt.meta')
+    print(self.output_dir)
+    
     sfiles = glob.glob(sfiles)
+    print(sfiles)
+    import time
+    time.sleep(10)
     sfiles.sort(key=os.path.getmtime)
     # Get the snapshot name in TensorFlow
     redfiles = []
     for stepsize in cfg.TRAIN.STEPSIZE:
+      print(stepsize)
       redfiles.append(os.path.join(self.output_dir, 
                       cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_{:d}.ckpt.meta'.format(stepsize+1)))
     sfiles = [ss.replace('.meta', '') for ss in sfiles if ss not in redfiles]
@@ -183,7 +201,7 @@ class SolverWrapper(object):
     variables = tf.global_variables()
     # Initialize all variables first
     sess.run(tf.variables_initializer(variables, name='init'))
-    var_keep_dic = self.get_variables_in_checkpoint_file(self.pretrained_model)
+    var_keep_dic = self.get_variables_in_checkpoint_file(self.pretrained_model,exclusions=['resnet_v1_152/bbox_pred','resnet_v1_152/cls_score','resnet_v1_152/rpn_cls_score','resnet_v1_152/rpn_bbox_pred'])
     # Get the variables to restore, ignoring the variables to fix
     variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
 
@@ -249,11 +267,15 @@ class SolverWrapper(object):
 
     # Find previous snapshots if there is any to restore from
     lsf, nfiles, sfiles = self.find_previous()
-
+    import time
     # Initialize the variables or restore them from the last snapshot
     if lsf == 0:
+      print('initialize from pretrained model!!!!!!!!!!!!!!!!!!')
+      time.sleep(2)
       rate, last_snapshot_iter, stepsizes, np_paths, ss_paths = self.initialize(sess)
     else:
+      print('from snapshot!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+      time.sleep(2)
       rate, last_snapshot_iter, stepsizes, np_paths, ss_paths = self.restore(sess, 
                                                                             str(sfiles[-1]), 
                                                                             str(nfiles[-1]))

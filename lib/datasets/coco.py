@@ -23,6 +23,7 @@ import uuid
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as COCOmask
+import json
 
 class coco(imdb):
   def __init__(self, image_set, year):
@@ -45,7 +46,9 @@ class coco(imdb):
     # Default to roidb handler
     self.set_proposal_method('gt')
     self.competition_mode(False)
-
+    import json
+    f=open('/SSD3/crh/tf-faster-rcnn/data/coco/annotations/transform.json','r')
+    self.transform=json.load(f)
     # Some image sets are "views" (i.e. subsets) into others.
     # For example, minival2014 is a random 5000 image subset of val2014.
     # This mapping tells us where the view's images and proposals come from.
@@ -92,8 +95,12 @@ class coco(imdb):
     """
     # Example image path for index=119993:
     #   images/train2014/COCO_train2014_000000119993.jpg
-    file_name = ('COCO_' + self._data_name + '_' +
+    if index>1000000:
+      file_name=self.transform[str(index)]+'.jpg'
+    else:
+      file_name = ('COCO_' + self._data_name + '_' +
                  str(index).zfill(12) + '.jpg')
+    
     image_path = osp.join(self._data_path, 'images',
                           self._data_name, file_name)
     assert osp.exists(image_path), \

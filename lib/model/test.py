@@ -17,13 +17,13 @@ import os
 import math
 
 from utils.timer import Timer
+from utils.cython_nms import nms
 from utils.blob import im_list_to_blob
 
 from model.config import cfg, get_output_dir
 from model.bbox_transform import clip_boxes, bbox_transform_inv
-from model.nms_wrapper import nms
 
-def _get_image_blob(im):
+def _get_image_blob(im,scale):
   """Converts an image into a network input.
   Arguments:
     im (ndarray): a color image in BGR order
@@ -42,7 +42,7 @@ def _get_image_blob(im):
   processed_ims = []
   im_scale_factors = []
 
-  for target_size in cfg.TEST.SCALES:
+  for target_size in [scale]:
     im_scale = float(target_size) / float(im_size_min)
     # Prevent the biggest axis from being more than MAX_SIZE
     if np.round(im_scale * im_size_max) > cfg.TEST.MAX_SIZE:
@@ -57,10 +57,10 @@ def _get_image_blob(im):
 
   return blob, np.array(im_scale_factors)
 
-def _get_blobs(im):
+def _get_blobs(im,scale):
   """Convert an image and RoIs within that image into network inputs."""
   blobs = {}
-  blobs['data'], im_scale_factors = _get_image_blob(im)
+  blobs['data'], im_scale_factors = _get_image_blob(im,scale)
 
   return blobs, im_scale_factors
 
@@ -84,27 +84,60 @@ def _rescale_boxes(boxes, inds, scales):
   return boxes
 
 def im_detect(sess, net, im):
-  blobs, im_scales = _get_blobs(im)
-  assert len(im_scales) == 1, "Only single-image batch implemented"
+  finalscores=[]
+  finalpredboxes=[]
+  #  [[480, 800], [576, 900], [688, 1100], [800, 1200], [1200, 1600], [1400, 2000]]
+  for scale in [576,688,800]:
+    blobs, im_scales = _get_blobs(im,scale)
+    assert len(im_scales) == 1, "Only single-image batch implemented"
 
-  im_blob = blobs['data']
-  blobs['im_info'] = np.array([im_blob.shape[1], im_blob.shape[2], im_scales[0]], dtype=np.float32)
+    im_blob = blobs['data']
+    blobs['im_info'] = np.array([im_blob.shape[1], im_blob.shape[2], im_scales[0]], dtype=np.float32)
 
-  _, scores, bbox_pred, rois = net.test_image(sess, blobs['data'], blobs['im_info'])
-  
-  boxes = rois[:, 1:5] / im_scales[0]
-  scores = np.reshape(scores, [scores.shape[0], -1])
-  bbox_pred = np.reshape(bbox_pred, [bbox_pred.shape[0], -1])
-  if cfg.TEST.BBOX_REG:
-    # Apply bounding-box regression deltas
-    box_deltas = bbox_pred
-    pred_boxes = bbox_transform_inv(boxes, box_deltas)
-    pred_boxes = _clip_boxes(pred_boxes, im.shape)
-  else:
-    # Simply repeat the boxes, once for each class
-    pred_boxes = np.tile(boxes, (1, scores.shape[1]))
+    _, scores, bbox_pred, rois = net.test_image(sess, blobs['data'], blobs['im_info'])
+    
+    boxes = rois[:, 1:5] / im_scales[0]
+    scores = np.reshape(scores, [scores.shape[0], -1])
+    bbox_pred = np.reshape(bbox_pred, [bbox_pred.shape[0], -1])
+    if cfg.TEST.BBOX_REG:
+      # Apply bounding-box regression deltas
+      box_deltas = bbox_pred
+      pred_boxes = bbox_transform_inv(boxes, box_deltas)
+      pred_boxes = _clip_boxes(pred_boxes, im.shape)
+    else:
+      # Simply repeat the boxes, once for each class
+      pred_boxes = np.tile(boxes, (1, scores.shape[1]))
+    finalscores.append(scores)
+    finalpredboxes.append(pred_boxes)
+  return np.concatenate((finalscores[0],finalscores[1],finalscores[2])),np.concatenate((finalpredboxes[0],finalpredboxes[1],finalpredboxes[2]))
 
-  return scores, pred_boxes
+def im_detect_fast(sess, net, im):
+  finalscores=[]
+  finalpredboxes=[]
+  #  [[480, 800], [576, 900], [688, 1100], [800, 1200], [1200, 1600], [1400, 2000]]
+  for scale in [688]:
+    blobs, im_scales = _get_blobs(im,scale)
+    assert len(im_scales) == 1, "Only single-image batch implemented"
+
+    im_blob = blobs['data']
+    blobs['im_info'] = np.array([im_blob.shape[1], im_blob.shape[2], im_scales[0]], dtype=np.float32)
+
+    _, scores, bbox_pred, rois = net.test_image(sess, blobs['data'], blobs['im_info'])
+    
+    boxes = rois[:, 1:5] / im_scales[0]
+    scores = np.reshape(scores, [scores.shape[0], -1])
+    bbox_pred = np.reshape(bbox_pred, [bbox_pred.shape[0], -1])
+    if cfg.TEST.BBOX_REG:
+      # Apply bounding-box regression deltas
+      box_deltas = bbox_pred
+      pred_boxes = bbox_transform_inv(boxes, box_deltas)
+      pred_boxes = _clip_boxes(pred_boxes, im.shape)
+    else:
+      # Simply repeat the boxes, once for each class
+      pred_boxes = np.tile(boxes, (1, scores.shape[1]))
+    finalscores.append(scores)
+    finalpredboxes.append(pred_boxes)
+  return finalscores[0],finalpredboxes[0]
 
 def apply_nms(all_boxes, thresh):
   """Apply non-maximum suppression to all predicted boxes output by the
@@ -124,7 +157,7 @@ def apply_nms(all_boxes, thresh):
       x2 = dets[:, 2]
       y2 = dets[:, 3]
       scores = dets[:, 4]
-      inds = np.where((x2 > x1) & (y2 > y1))[0]
+      inds = np.where((x2 > x1) & (y2 > y1) & (scores > cfg.TEST.DET_THRESHOLD))[0]
       dets = dets[inds,:]
       if dets == []:
         continue
@@ -135,7 +168,7 @@ def apply_nms(all_boxes, thresh):
       nms_boxes[cls_ind][im_ind] = dets[keep, :].copy()
   return nms_boxes
 
-def test_net(sess, net, imdb, weights_filename, max_per_image=100, thresh=0.):
+def test_net(sess, net, imdb, weights_filename, max_per_image=100, thresh=0.05):
   np.random.seed(cfg.RNG_SEED)
   """Test a Fast R-CNN network on an image database."""
   num_images = len(imdb.image_index)

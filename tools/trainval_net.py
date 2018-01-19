@@ -108,7 +108,7 @@ if __name__ == '__main__':
   # output directory where the models are saved
   output_dir = get_output_dir(imdb, args.tag)
   print('Output will be saved to `{:s}`'.format(output_dir))
-
+  
   # tensorboard directory where the summaries are saved during training
   tb_dir = get_output_tb_dir(imdb, args.tag)
   print('TensorFlow summaries will be saved to `{:s}`'.format(tb_dir))
@@ -133,7 +133,9 @@ if __name__ == '__main__':
     net = mobilenetv1()
   else:
     raise NotImplementedError
-    
+  import time
+  print(imdb.num_classes)
+  time.sleep(5)  
   train_net(net, imdb, roidb, valroidb, output_dir, tb_dir,
             pretrained_model=args.weight,
             max_iters=args.max_iters)

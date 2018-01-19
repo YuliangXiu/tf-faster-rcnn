@@ -72,8 +72,7 @@ def voc_eval(detpath,
              classname,
              cachedir,
              ovthresh=0.5,
-             use_07_metric=False,
-             use_diff=False):
+             use_07_metric=False):
   """rec, prec, ap = voc_eval(detpath,
                               annopath,
                               imagesetfile,
@@ -134,10 +133,7 @@ def voc_eval(detpath,
   for imagename in imagenames:
     R = [obj for obj in recs[imagename] if obj['name'] == classname]
     bbox = np.array([x['bbox'] for x in R])
-    if use_diff:
-      difficult = np.array([False for x in R]).astype(np.bool)
-    else:
-      difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+    difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
     det = [False] * len(R)
     npos = npos + sum(~difficult)
     class_recs[imagename] = {'bbox': bbox,

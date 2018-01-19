@@ -25,7 +25,7 @@ __C.TRAIN.LEARNING_RATE = 0.001
 __C.TRAIN.MOMENTUM = 0.9
 
 # Weight decay, for regularization
-__C.TRAIN.WEIGHT_DECAY = 0.0001
+__C.TRAIN.WEIGHT_DECAY = 0.0005
 
 # Factor for reducing the learning rate
 __C.TRAIN.GAMMA = 0.1
@@ -232,7 +232,7 @@ __C.MOBILENET = edict()
 # Whether to regularize the depth-wise filters during training
 __C.MOBILENET.REGU_DEPTH = False
 
-# Number of fixed layers during training, by default the bottom 5 of 14 layers is fixed
+# Number of fixed layers during training, by default the first of all 14 layers is fixed
 # Range: 0 (none) to 12 (all)
 __C.MOBILENET.FIXED_LAYERS = 5
 
@@ -292,12 +292,18 @@ def get_output_dir(imdb, weights_filename):
   A canonical path is built using the name from an imdb and a network
   (if not None).
   """
-  outdir = osp.abspath(osp.join(__C.ROOT_DIR, 'output', __C.EXP_DIR, imdb.name))
+  outdir = osp.abspath(osp.join(__C.ROOT_DIR, 'output', 'res152', imdb.name))
   if weights_filename is None:
     weights_filename = 'default'
   outdir = osp.join(outdir, weights_filename)
   if not os.path.exists(outdir):
     os.makedirs(outdir)
+  print(outdir)
+  print(__C.ROOT_DIR)
+  print( __C.EXP_DIR)
+  print(imdb.name)
+  import time
+  #time.sleep(30)
   return outdir
 
 

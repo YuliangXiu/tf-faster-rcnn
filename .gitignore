@@ -1,6 +1,9 @@
 *.so
 *.pyc
+data
 output
+tools/aic-coco-dataset
+tools/videoDemoFiles
 tensorboard
 lib/build
 lib/pycocotools
